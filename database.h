@@ -1,6 +1,7 @@
 #ifndef DATABASE_H
 #define DATABASE_H
 #include<stdint.h>
+#include<inttypes.h>
 #define VERSION 1
 #define MAX_STUDENTS 100		//Initially 
 #define HEADER_SIZE 12

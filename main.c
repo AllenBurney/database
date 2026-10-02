@@ -84,12 +84,54 @@ int load_database(){
 	printf("Database Loaded.\n");
 	return LOAD_OK;
 }
-
-void insert_student(){
-	return;
+static void flush_line(){
+	int c;
+	while((c=getchar())!='\n' && c!=EOF);
 }
+void insert_student(){
+	if(student_count>=MAX_STUDENTS){
+		printf("Table is Full.\n");
+		return;
+	}
+	Student s={0};
+	printf("Enter Id: ");
+	if(scanf("%" SCNd32,&s.id)!=1){
+		printf("Invalid Id.\n");
+		flush_line();
+		return;
+	}
+	printf("Enter Name: ");
+	if(scanf("%51s",s.name)!=1){
+		printf("Invalid Name.\n");
+		flush_line();
+		return;
+	}
+	printf("Enter Age: ");
+	if(scanf("%" SCNd32,&s.age)!=1){
+		printf("Invalid Age.\n");
+		flush_line();
+		return;
+	}
+	printf("Enter Marks: ");
+	if(scanf("%f",&s.marks)!=1){
+		printf("Invalid Marks.\n");
+		flush_line();
+		return;
+	}
+	flush_line();
+	table[student_count]=s;
+	student_count++;
+	printf("Student Inserted.\n");
+}
+
 void select_student(){
-	return;
+	if(student_count==0){
+		printf("Table Empty.\n");
+		return;
+	}
+	for(int32_t i=0;i<student_count;i++){
+		printf("ID:%" PRId32 "|Name:%s |Age:%" PRId32 "|Marks:%.2f\n",table[i].id,table[i].name,table[i].age,table[i].marks);
+	}
 }
 
 
