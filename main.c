@@ -151,7 +151,7 @@ int main(){
 		else if(strcmp(command,"select")==0){
 			select_student();
 		}
-		else if(strcmp(command,"exit")==0){
+		else if(strcmp(command,"exit")==0){ 
 			if(save_database())
 				break;
 			printf("Save Failed, Not Exiting.\n");
