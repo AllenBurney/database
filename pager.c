@@ -6,14 +6,15 @@
 #include "pager.h"
 static int32_t read_page(FILE *fp,uint32_t page_num,void *buffer){
 	long offset=(long)page_num*PAGE_SIZE;
-	if(fseek(fp.offset,SEEK_SET)!=0)
+	if(fseek(fp,offset,SEEK_SET)!=0)
 		return 0;
 	if(fread(buffer,1,PAGE_SIZE,fp)!=PAGE_SIZE)
 		return 0;
 	return 1;
 }
 static int32_t write_page(FILE *fp,uint32_t page_num,void *buffer){
-	if(fseek(fp.offset,SEEK_SET)!=0)
+	long offset=(long)page_num*PAGE_SIZE;
+	if(fseek(fp,offset,SEEK_SET)!=0)
 		return 0;
 	if(fread(buffer,1,PAGE_SIZE,fp)!=PAGE_SIZE)
 		return 0;
@@ -80,7 +81,7 @@ Pager *pager_open(const char *filename){
 	}
 	return pager;
 }
-void *get_page(Pager *pager,uint32_t page_name){
+void *get_page(Pager *pager,uint32_t page_num){
 	if(pager==NULL||page_num>=MAX_PAGES)
 		return NULL;
 	if(page_num>pager->num_pages)
@@ -111,4 +112,41 @@ void *get_page(Pager *pager,uint32_t page_name){
 		return NULL;
 	}
 	return pager->pages[page_num];
+}
+void pager_mark_dirty(Pager *pager,uint32_t page_num){
+	if(pager!=NULL || page_num<pager->num_pages)
+		pager->is_dirty[page_num]=1;
+}
+int32_t pager_flush(Pager *pager,uint32_t page_num){
+	if(pager==NULL || page_num>=pager->num_pages)
+		return 0;
+	if(pager->pages[page_num]==NULL)
+		return 1;
+	if(!pager->is_dirty[page_num])
+		return 1;
+	if(!write_page(pager->fp,page_num,pager->pages[page_num])){
+		printf("Error writing database page.\n");
+		return 0;
+	}
+	pager->is_dirty[page_num]=0;
+	return 1;
+}
+int32_t pager_class(Pager *pager){
+	if(pager==NULL)
+		return 0;
+	int32_t success=1;
+	for(uint32_t i=1;i<pager->num_pages;i++){
+		if(!pager_flush(pager,i))
+			success=0;
+	}
+	if(!pager_flush(pager,0))
+		success=0;
+	for(uint32_t i=0;i<MAX_PAGES;i++)
+		free(pager->pages[i]);
+	if(fclose(pager->fp)!=0){
+		perror("Error closing database file");
+		success=0;
+	}
+	free(pager);
+	return success;
 }
