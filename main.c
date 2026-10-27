@@ -1,144 +1,137 @@
 #include<stdio.h>
+#include<stdint.h>
+#include<inttypes.h>
 #include<string.h>
 #include "database.h"
+#include "pager.h"
 #define DB_FILE "database.dat"
-#define TMP_FILE "database.tmp"
 
-Student table[MAX_STUDENTS];
-int32_t student_count=0;
-
-int save_database(){
-	if(student_count<0 || student_count>MAX_STUDENTS){
-		printf("Invalid student count.\n");
-		return 0;
-	}
-	FILE *fp=fopen(TMP_FILE,"wb");
-	if(fp==NULL){
-		printf("Error While Opening File.\n");
-		return 0;
-	}
-	char magic[4]=MAGIC;
-	int32_t version=VERSION;
-	int32_t count=student_count;
-	if(fwrite(magic,sizeof(char),4,fp)!=4||
-		fwrite(&version,sizeof(int32_t),1,fp)!=1||
-		fwrite(&count,sizeof(int32_t),1,fp)!=1||
-		fwrite(table,sizeof(Student),count,fp)!=(size_t)count||
-		fflush(fp)!=0){
-		printf("Error While Writing File.\n");
-		fclose(fp);
-		remove(TMP_FILE);
-		return 0;
-	}
-	if(fclose(fp)!=0){
-		printf("Error while closing file\n");
-		remove(TMP_FILE);
-		return 0;
-	}
-	#ifdef _WIN32
-		remove(DB_FILE);      //rename() doesnt work if target file exists
-	#endif
-	if(rename(TMP_FILE,DB_FILE)!=0){
-		printf("Error while renaming file.\n");
-		return 0;
-	}
-	printf("Database Saved.\n");
-	return 1;
-}
-
-int load_database(){
-	FILE *fp=fopen(DB_FILE,"rb");
-	if(fp==NULL){
-		return LOAD_NEW;
-	}
-	char magic[4];
-	int32_t version;
-	int32_t count;
-	if(fread(magic,sizeof(char),4,fp)!=4){
-		printf("Invalid Database File.\n");
-		fclose(fp);
-		return LOAD_ERR;
-	}
-	if(magic[0]!='M'||magic[1]!='Y'||magic[2]!='D'||magic[3]!='B'){
-		printf("Invalid Database File.\n");
-		fclose(fp);
-		return LOAD_ERR;
-	}
-	if(fread(&version,sizeof(int32_t),1,fp)!=1||version!=VERSION){
-		printf("Unsupported Database Version.\n");
-		fclose(fp);
-		return LOAD_ERR;
-	}
-	if(fread(&count,sizeof(int32_t),1,fp)!=1 || count<0 || count>MAX_STUDENTS){
-		printf("Invalid Student Count.\n");
-		fclose(fp);
-		return LOAD_ERR;
-	}
-	if(fread(table,sizeof(Student),count,fp)!=(size_t)count){
-		printf("Truncated Database File.\n");
-		fclose(fp);
-		return LOAD_ERR;
-	}
-	student_count=count;
-	fclose(fp);
-	printf("Database Loaded.\n");
-	return LOAD_OK;
-}
-static void flush_line(){
+static void flush_line(void){
 	int c;
 	while((c=getchar())!='\n' && c!=EOF);
 }
-void insert_student(){
-	if(student_count>=MAX_STUDENTS){
-		printf("Table is Full.\n");
+static int32_t initialize_database(Pager *pager,int32_t *student_count){
+	unsigned char *header=get_page(pager,0);
+	if(header==NULL)
+		return LOAD_ERR;
+	
+	if(pager->file_length==0){
+		memset(header,0,PAGE_SIZE);
+		int32_t version=VERSION;
+		int32_t count=0;
+		memcpy(header,MAGIC,4);
+		memcpy(header+VERSION_OFFSET,&version,sizeof(version));
+		memcpy(header+COUNT_OFFSET,&count,sizeof(count));
+		pager_mark_dirty(pager,0);
+		*student_count=0;
+		printf("New Database Created.\n");
+		return LOAD_NEW;
+	}
+	if(memcmp(header,MAGIC,4)!=0){
+		printf("INVALID Database File.\n");
+		return LOAD_ERR;
+	}
+	int32_t version;
+	int32_t count;
+	memcpy(&version,header+VERSION_OFFSET,sizeof(version));
+	memcpy(&count,header+COUNT_OFFSET,sizeof(count));
+	if(version!=VERSION){
+		printf("Unsupported Database Version.\n");
+		return LOAD_ERR;
+	}
+	if(count<0 || count>MAX_STUDENTS){
+		printf("Invalid Student Count.\n");;
+		return LOAD_ERR;
+	}
+	uint32_t required_pages=1+((uint32_t)count+ROWS_PER_PAGE-1)/ROWS_PER_PAGE;
+	if(required_pages>pager->num_pages){
+		printf("Truncated Database File.\n");
+		return LOAD_ERR;
+	}
+	*student_count=count;
+	printf("Database Located.\n");
+	return LOAD_OK;
+}
+static void insert_student(Pager *pager,int32_t *student_count){
+	if(*student_count>=MAX_STUDENTS){
+		printf("Table is full.\n");
 		return;
 	}
 	Student s={0};
-	printf("Enter Id: ");
+	printf("Enter Id:");
 	if(scanf("%" SCNd32,&s.id)!=1){
 		printf("Invalid Id.\n");
 		flush_line();
 		return;
 	}
-	printf("Enter Name: ");
+	printf("Enter Name:");
 	if(scanf("%51s",s.name)!=1){
 		printf("Invalid Name.\n");
 		flush_line();
 		return;
 	}
-	printf("Enter Age: ");
+	printf("Enter Age:");
 	if(scanf("%" SCNd32,&s.age)!=1){
 		printf("Invalid Age.\n");
 		flush_line();
 		return;
 	}
-	printf("Enter Marks: ");
+	printf("Enter Marks:");
 	if(scanf("%f",&s.marks)!=1){
 		printf("Invalid Marks.\n");
 		flush_line();
 		return;
 	}
 	flush_line();
-	table[student_count]=s;
-	student_count++;
+	uint32_t page_num=1+(uint32_t)(*student_count)/ROWS_PER_PAGE;
+	uint32_t row_num=(uint32_t)(*student_count)%ROWS_PER_PAGE;
+	//Getting both pages before changing anything
+	unsigned char *header=get_page(pager,0);
+	if(header==NULL){
+		printf("Error accessing database header.\n");
+		return;
+	}
+	unsigned char *page=get_page(pager,page_num);
+	if(page==NULL){
+		printf("Error accessing database page.\n");
+		return;
+	}
+	memcpy(page+(size_t)row_num*RECORD_SIZE,&s,sizeof(Student));
+	pager_mark_dirty(pager,page_num);
+	(*student_count)++;
+	memcpy(header+COUNT_OFFSET,student_count,sizeof(*student_count));
+	pager_mark_dirty(pager,0);
 	printf("Student Inserted.\n");
 }
-
-void select_student(){
+static void select_student(Pager *pager,int32_t student_count){
 	if(student_count==0){
 		printf("Table Empty.\n");
 		return;
 	}
 	for(int32_t i=0;i<student_count;i++){
-		printf("ID:%" PRId32 "|Name:%s |Age:%" PRId32 "|Marks:%.2f\n",table[i].id,table[i].name,table[i].age,table[i].marks);
+		uint32_t page_num=1+(uint32_t)i/ROWS_PER_PAGE;
+		uint32_t row_num=(uint32_t)i%ROWS_PER_PAGE;
+		unsigned char *page=get_page(pager,page_num);
+		if(page==NULL){
+			printf("Error reading student record.\n");
+			return;
+		}
+		Student s;
+		memcpy(&s,page+(size_t)row_num*RECORD_SIZE,sizeof(Student));
+		printf("ID:%"PRId32" |Name:%s |Age:%" PRId32" |Marks:%.2f\n",s.id,s.name,s.age,s.marks);
 	}
 }
-
-
-int main(){
+int main(void){
 	char command[20];
-	if(load_database()==LOAD_ERR){
-		printf("Refusing to start;fix or remove %s.\n",DB_FILE);
+	Pager *pager=pager_open(DB_FILE);
+	if(pager==NULL){
+		printf("Refusing to start; fix or replace %s.\n",DB_FILE);
+		return 1;
+	}
+	int32_t student_count=0;
+	if(initialize_database(pager,&student_count)==LOAD_ERR){
+		pager_close(pager);
+		printf("Refusing to start;fix or replace %s.\n",DB_FILE);
 		return 1;
 	}
 	while(1){
@@ -146,19 +139,22 @@ int main(){
 		if(scanf("%19s",command)!=1)
 			break;
 		if(strcmp(command,"insert")==0){
-			insert_student();
+			insert_student(pager,&student_count);
 		}
 		else if(strcmp(command,"select")==0){
-			select_student();
+			select_student(pager,student_count);
 		}
-		else if(strcmp(command,"exit")==0){ 
-			if(save_database())
-				break;
-			printf("Save Failed, Not Exiting.\n");
+		else if(strcmp(command,"exit")==0){
+			break;
 		}
 		else{
 			printf("Unknown Command.\n");
 		}
 	}
+	if(!pager_close(pager)){
+		printf("Error Saving or Closing database.\n");
+		return 1;
+	}
+	printf("Database Closed.\n");
 	return 0;
 }

@@ -1,0 +1,77 @@
+Month 1: Prototype and storage
+
+Week 1: Prototype (v0)
+
+In-memory table of struct Student with a simple REPL: insert, select, exit.
+Save and load with fwrite()/fread().
+Also write a 1-page file format spec draft (page size, header, record layout).
+
+Week 2: Pager (v1)
+
+4096-byte pages, a header page, and pager_open, get_page, pager_flush, pager_close, using pread()/pwrite().
+Records stored in pages instead of one flat file.
+
+Week 3: Persistent CRUD (v2)
+
+Insert, select, update, delete on pages.
+Deletes via tombstones or a slot directory.
+
+Week 4: Tests and cleanup
+
+Unit tests for the pager and records, plus a persistence check (close, reopen, data intact).
+Write the first dissertation notes.
+Month 2: Tables and SQL
+
+Week 5: Catalog and schema
+
+Table metadata page with column names and types (INT, TEXT).
+Move to variable-length records with slotted pages.
+
+Week 6: Tokenizer and parser, part 1
+
+CREATE TABLE and INSERT, producing an AST.
+
+Week 7: Parser, part 2
+
+SELECT, WHERE, UPDATE, DELETE.
+
+Week 8: Executor
+
+Full table scan with comparisons, AND, OR.
+Build the differential test harness: run the same queries on SQLite and compare results.
+Month 3: Indexing and caching
+
+Week 9: Index prototype
+
+In-memory B-tree first, to get the logic right before involving pages.
+
+Week 10: B+ tree on pages
+
+Node layout, insert, leaf splits.
+
+Week 11: B+ tree, part 2
+
+Internal node splits, point search, range scan, simple delete.
+
+Week 12: Integration and cache
+
+Use the index for WHERE id = x queries.
+Add an LRU buffer pool.
+Month 4: Evaluation and writing
+
+Week 13: Benchmark harness
+
+Data generator with fixed seeds, workloads, cold and warm cache runs.
+
+Week 14: Experiments
+
+Scan vs index at 1K–1M records, page size effect, cache effect, storage overhead.
+Compare against SQLite.
+
+Week 15: Stretch and buffer
+
+ORDER BY, a basic aggregate, or a simple rollback journal. Use this week as slack if you’re behind.
+
+Week 16: Final write-up
+
+Results chapter, limitations, polish.

@@ -16,7 +16,7 @@ static int32_t write_page(FILE *fp,uint32_t page_num,void *buffer){
 	long offset=(long)page_num*PAGE_SIZE;
 	if(fseek(fp,offset,SEEK_SET)!=0)
 		return 0;
-	if(fread(buffer,1,PAGE_SIZE,fp)!=PAGE_SIZE)
+	if(fwrite(buffer,1,PAGE_SIZE,fp)!=PAGE_SIZE)
 		return 0;
 	if(fflush(fp)!=0)
 		return 0;
@@ -114,7 +114,7 @@ void *get_page(Pager *pager,uint32_t page_num){
 	return pager->pages[page_num];
 }
 void pager_mark_dirty(Pager *pager,uint32_t page_num){
-	if(pager!=NULL || page_num<pager->num_pages)
+	if(pager!=NULL && page_num<pager->num_pages)
 		pager->is_dirty[page_num]=1;
 }
 int32_t pager_flush(Pager *pager,uint32_t page_num){
@@ -131,7 +131,7 @@ int32_t pager_flush(Pager *pager,uint32_t page_num){
 	pager->is_dirty[page_num]=0;
 	return 1;
 }
-int32_t pager_class(Pager *pager){
+int32_t pager_close(Pager *pager){
 	if(pager==NULL)
 		return 0;
 	int32_t success=1;
